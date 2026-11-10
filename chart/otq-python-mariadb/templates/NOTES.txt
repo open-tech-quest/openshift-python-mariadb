@@ -1,10 +1,10 @@
 Open Tech Quest demo app deployed.
 
+Database: {{ .Values.database.user }}@{{ .Values.database.host }}:{{ .Values.database.port }}/{{ .Values.database.name }}
+Challenge: {{ .Values.challenge.name }}
+
 {{- if .Values.route.enabled }}
 
 URL:
   echo "https://$(oc get route {{ include "otq.app.name" . }} -n {{ .Release.Namespace }} -o jsonpath='{.spec.host}')"
 {{- end }}
-
-Expected challenge flag (for organizers):
-  oc get secret {{ include "otq.secret.name" . }} -n {{ .Release.Namespace }} -o jsonpath='{.data.challenge-flag}' | base64 -d; echo

@@ -1,24 +1,14 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "otq.db.name" . }}
+  name: otq-mariadb
   labels:
-    {{- include "otq.labels" . | nindent 4 }}
-    {{- include "otq.db.selectorLabels" . | nindent 4 }}
     app.openshift.io/runtime: mariadb
 spec:
   replicas: 1
   strategy:
     type: Recreate
-  selector:
-    matchLabels:
-      {{- include "otq.db.selectorLabels" . | nindent 6 }}
   template:
-    metadata:
-      labels:
-        {{- include "otq.db.selectorLabels" . | nindent 8 }}
-      annotations:
-        checksum/initdb: {{ include (print $.Template.BasePath "/mariadb-initdb-configmap.yaml") . | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -26,34 +16,42 @@ spec:
           type: RuntimeDefault
       containers:
         - name: mariadb
-          image: "{{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}"
-          imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
+          image: registry.access.redhat.com/hi/mariadb:latest
+          imagePullPolicy: IfNotPresent
           securityContext:
-            {{- include "otq.containerSecurityContext" . | nindent 12 }}
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
           ports:
             - name: mysql
               containerPort: 3306
           env:
             - name: MARIADB_DATABASE
-              value: {{ .Values.mariadb.database | quote }}
+              value: otq
             - name: MARIADB_USER
-              value: {{ .Values.mariadb.user | quote }}
+              value: otq
             - name: MARIADB_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "otq.secret.name" . }}
+                  name: otq-mariadb
                   key: database-password
             - name: MARIADB_ROOT_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "otq.secret.name" . }}
+                  name: otq-mariadb
                   key: database-root-password
             - name: CHALLENGE_NAME
-              value: {{ .Values.challenge.name | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: otq-mariadb
+                  key: challenge-name
             - name: CHALLENGE_FLAG
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "otq.secret.name" . }}
+                  name: otq-mariadb
                   key: challenge-flag
           readinessProbe:
             exec:
@@ -74,7 +72,11 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 5
           resources:
-            {{- toYaml .Values.mariadb.resources | nindent 12 }}
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi
           volumeMounts:
             - name: data
               mountPath: /var/lib/mysql
@@ -83,12 +85,8 @@ spec:
               readOnly: true
       volumes:
         - name: data
-          {{- if .Values.mariadb.persistence.enabled }}
           persistentVolumeClaim:
-            claimName: {{ include "otq.db.name" . }}
-          {{- else }}
-          emptyDir: {}
-          {{- end }}
+            claimName: otq-mariadb
         - name: initdb
           configMap:
-            name: {{ include "otq.db.name" . }}-initdb
+            name: otq-mariadb-initdb

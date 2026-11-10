@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: otq-mariadb
+spec:
+  ports:
+    - name: mysql
+      port: 3306
+      targetPort: mysql

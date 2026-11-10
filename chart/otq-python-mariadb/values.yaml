@@ -1,9 +1,22 @@
 challenge:
   # Row in the `challenge` table the app displays
   name: openshift-python-mariadb
-  # Leave empty to generate a random 16 character flag on first install.
-  # The generated flag is kept across `helm upgrade` (read back from the Secret).
-  flag: ""
+
+# Connection to the (externally hosted) MariaDB database.
+# For a quick demo database see demo-db-deployment/ in the repository root.
+database:
+  # Hostname or Service name of the MariaDB server (required)
+  host: ""
+  port: 3306
+  name: otq
+  user: otq
+  # Password for `user`. Ignored when existingSecret is set.
+  # The chart then creates a Secret <release>-otq-python-mariadb with key `database-password`.
+  password: ""
+  # Use an existing Secret instead of `password` (e.g. `otq-mariadb` from demo-db-deployment/)
+  existingSecret: ""
+  existingSecretPasswordKey: database-password
+  connectTimeout: 3
 
 app:
   image:
@@ -18,31 +31,6 @@ app:
       memory: 64Mi
     limits:
       memory: 256Mi
-
-mariadb:
-  image:
-    repository: registry.access.redhat.com/hi/mariadb
-    tag: latest
-    pullPolicy: IfNotPresent
-  database: otq
-  user: otq
-  # Leave empty to generate random passwords (kept across upgrades)
-  password: ""
-  rootPassword: ""
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      memory: 512Mi
-  persistence:
-    # false = emptyDir: data (incl. flag) is re-seeded from the Secret on every pod restart
-    enabled: true
-    size: 1Gi
-    # Empty = cluster default StorageClass
-    storageClass: ""
-    accessModes:
-      - ReadWriteOnce
 
 route:
   enabled: true

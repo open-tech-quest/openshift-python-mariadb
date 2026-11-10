@@ -1,0 +1,31 @@
+# Demo MariaDB for the Open Tech Quest app - NOT for production.
+# Deploy:  oc apply -k demo-db-deployment/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+labels:
+  - pairs:
+      app.kubernetes.io/name: otq-mariadb
+      app.kubernetes.io/part-of: otq-python-mariadb
+    includeSelectors: true
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  - pvc.yaml
+
+configMapGenerator:
+  # Scripts run by the MariaDB entrypoint on first start (empty data directory).
+  # The name gets a content hash, so changes roll out the Deployment.
+  - name: otq-mariadb-initdb
+    files:
+      - initdb/10-schema.sql
+      - initdb/20-seed-challenge.sh
+
+secretGenerator:
+  # Fixed name, so the Helm chart can use it: --set database.existingSecret=otq-mariadb
+  - name: otq-mariadb
+    envs:
+      - secret.env
+    options:
+      disableNameSuffixHash: true

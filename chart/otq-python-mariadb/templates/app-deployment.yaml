@@ -6,8 +6,6 @@ metadata:
     {{- include "otq.labels" . | nindent 4 }}
     {{- include "otq.app.selectorLabels" . | nindent 4 }}
     app.openshift.io/runtime: python
-  annotations:
-    app.openshift.io/connects-to: '[{"apiVersion":"apps/v1","kind":"Deployment","name":"{{ include "otq.db.name" . }}"}]'
 spec:
   replicas: {{ .Values.app.replicas }}
   selector:
@@ -17,6 +15,10 @@ spec:
     metadata:
       labels:
         {{- include "otq.app.selectorLabels" . | nindent 8 }}
+      {{- if not .Values.database.existingSecret }}
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+      {{- end }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -38,18 +40,20 @@ spec:
             - name: CHALLENGE_NAME
               value: {{ .Values.challenge.name | quote }}
             - name: DB_HOST
-              value: {{ include "otq.db.name" . }}
+              value: {{ required "database.host is required" .Values.database.host | quote }}
             - name: DB_PORT
-              value: "3306"
+              value: {{ .Values.database.port | quote }}
             - name: DB_NAME
-              value: {{ .Values.mariadb.database | quote }}
+              value: {{ .Values.database.name | quote }}
             - name: DB_USER
-              value: {{ .Values.mariadb.user | quote }}
+              value: {{ .Values.database.user | quote }}
             - name: DB_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "otq.secret.name" . }}
-                  key: database-password
+                  key: {{ include "otq.secret.passwordKey" . }}
+            - name: DB_CONNECT_TIMEOUT
+              value: {{ .Values.database.connectTimeout | quote }}
           readinessProbe:
             httpGet:
               path: /readyz

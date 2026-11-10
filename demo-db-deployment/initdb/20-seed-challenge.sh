@@ -1,5 +1,5 @@
 # Sourced by the MariaDB entrypoint after 10-schema.sql.
-# Inserts the challenge flag (from the Helm-managed Secret) into the challenge table.
+# Inserts the challenge flag (from the Secret otq-mariadb) into the challenge table.
 # Helper functions come from docker-entrypoint.sh.
 
 if [ -z "${CHALLENGE_NAME:-}" ] || [ -z "${CHALLENGE_FLAG:-}" ]; then

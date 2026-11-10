@@ -1,0 +1,21 @@
+apiVersion: v1
+entries:
+  otq-python-mariadb:
+  - annotations:
+      charts.openshift.io/name: otq-python-mariadb
+      charts.openshift.io/provider: Open-Tech-Quest
+      charts.openshift.io/providerType: community
+      charts.openshift.io/supportedOpenShiftVersions: '>=4.22'
+      charts.openshift.io/testedOpenShiftVersion: "4.22"
+    apiVersion: v2
+    appVersion: main
+    created: "2026-11-10T11:49:06.709927984Z"
+    description: Open Tech Quest - Python demo app reading its challenge flag from
+      an external MariaDB on OpenShift
+    digest: a12ad1eea56a84e509f5a16ef579c1db6888ff45555601295a11a556d497dc01
+    name: otq-python-mariadb
+    type: application
+    urls:
+    - https://github.com/open-tech-quest/openshift-python-mariadb/releases/download/otq-python-mariadb-0.2.2/otq-python-mariadb-0.2.2.tgz
+    version: 0.2.2
+generated: "2026-11-10T11:49:06.709937279Z"

@@ -34,7 +34,20 @@ def fetch_flag(challenge_name: str) -> str | None:
     return row[0] if row else None
 
 
+def _setup_logging() -> None:
+    """Send this package's log records to gunicorn's error log (stderr), or stderr when run standalone."""
+    gunicorn_logger = logging.getLogger("gunicorn.error")
+    pkg_logger = logging.getLogger(__package__)
+    if gunicorn_logger.handlers:
+        pkg_logger.handlers = gunicorn_logger.handlers
+        pkg_logger.setLevel(gunicorn_logger.level)
+        pkg_logger.propagate = False
+    else:
+        logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(name)s: %(message)s")
+
+
 def create_app() -> Flask:
+    _setup_logging()
     app = Flask(__name__)
     challenge_name = os.environ.get("CHALLENGE_NAME", "openshift-python-mariadb")
 
@@ -60,6 +73,7 @@ def create_app() -> Flask:
             with _connect() as conn:
                 conn.ping(reconnect=False)
         except pymysql.MySQLError as exc:
+            log.warning("Readiness check failed, database unavailable: %s", exc)
             return {"status": "database unavailable", "error": str(exc)}, 503
         return {"status": "ok"}
 

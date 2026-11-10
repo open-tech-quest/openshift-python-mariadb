@@ -12,10 +12,12 @@ by a small Python (Flask + gunicorn) application.
 | Database      | `registry.access.redhat.com/hi/mariadb:latest` (used as-is, no custom image) |
 
 ```
-Route (edge TLS) ─▶ Service ─▶ app (gunicorn :8080) ──SELECT flag──▶ Service ─▶ mariadb (:3306, PVC)
-                                                                     ▲
-                    Secret: challenge-flag, database(-root)-password ─┘ seeded by /docker-entrypoint-initdb.d
+Helm chart (chart/otq-python-mariadb)                    External MariaDB (or demo-db-deployment/)
+Route (edge TLS) ─▶ Service ─▶ app (gunicorn :8080) ──SELECT flag──▶ database.host:database.port
 ```
+
+The Helm chart only deploys the app. The database is hosted externally; the connection is configured
+via the `database.*` values. For demos, [demo-db-deployment/](demo-db-deployment/) deploys a MariaDB with Kustomize.
 
 ## Repository layout
 
@@ -26,9 +28,11 @@ app/                         Python application
   otq/static/                Bootstrap, CSS, banner, favicon
 Containerfile                Multi-stage build (hi/python builder -> hi/python runtime)
 build.sh                     Multi-arch build + push (linux/amd64, linux/arm64)
-chart/otq-python-mariadb/    Helm chart for OpenShift
-  files/10-schema.sql        Database layout
-  files/20-seed-challenge.sh Inserts the challenge flag from the Secret
+chart/otq-python-mariadb/    Helm chart for OpenShift (app only)
+demo-db-deployment/          Kustomize: demo MariaDB (Deployment, Service, PVC, Secret)
+  secret.env                 Passwords + challenge flag (change before deploying!)
+  initdb/10-schema.sql       Database layout
+  initdb/20-seed-challenge.sh Inserts the challenge flag from the Secret
 ```
 
 ## Database layout
@@ -45,7 +49,7 @@ Database `otq`, user `otq` (only `SELECT` is needed by the app, the entrypoint g
 | `created_at` | `TIMESTAMP`    | default `CURRENT_TIMESTAMP`     | |
 | `updated_at` | `TIMESTAMP`    | `ON UPDATE CURRENT_TIMESTAMP`   | |
 
-DDL: [chart/otq-python-mariadb/files/10-schema.sql](chart/otq-python-mariadb/files/10-schema.sql)
+DDL: [demo-db-deployment/initdb/10-schema.sql](demo-db-deployment/initdb/10-schema.sql)
 
 The app runs:
 
@@ -55,16 +59,22 @@ SELECT flag FROM challenge WHERE name = %s;
 
 ### How the flag gets into the database
 
-1. Helm generates a random 16-character flag (plus DB passwords) into the Secret `<release>-otq-python-mariadb`.
-   On `helm upgrade` the existing values are read back with `lookup`, so they stay stable.
-   Set `challenge.flag` to use a fixed value instead.
-2. The scripts in `files/` are mounted to `/docker-entrypoint-initdb.d` of the MariaDB container.
-   The MariaDB entrypoint runs them **when the data directory is empty** (first start on a fresh PVC,
-   or every restart with `mariadb.persistence.enabled=false`).
+**External database:** create the table with the DDL above and insert the row yourself:
 
-> Changing `challenge.flag` later does not update an already initialized PVC. Update the row manually
+```sql
+INSERT INTO challenge (name, flag) VALUES ('openshift-python-mariadb', '<flag>');
+```
+
+**Demo database ([demo-db-deployment/](demo-db-deployment/)):**
+
+1. Passwords and flag come from [demo-db-deployment/secret.env](demo-db-deployment/secret.env), which
+   Kustomize turns into the Secret `otq-mariadb`.
+2. The scripts in `initdb/` are mounted to `/docker-entrypoint-initdb.d` of the MariaDB container.
+   The MariaDB entrypoint runs them **when the data directory is empty** (first start on a fresh PVC).
+
+> Changing `challenge-flag` later does not update an already initialized PVC. Update the row manually
 > or delete the PVC:
-> `oc exec deploy/<release>-otq-python-mariadb-mariadb -- sh -c 'MYSQL_PWD=$MARIADB_PASSWORD mariadb -u otq otq -e "UPDATE challenge SET flag=\"NEW\" WHERE name=\"openshift-python-mariadb\""'`
+> `oc exec deploy/otq-mariadb -- sh -c 'MYSQL_PWD=$MARIADB_PASSWORD mariadb -u otq otq -e "UPDATE challenge SET flag=\"NEW\" WHERE name=\"openshift-python-mariadb\""'`
 
 ## Build the multi-arch image (Podman Desktop on Mac)
 
@@ -88,7 +98,7 @@ podman run -d --pod otq --name otq-db \
   -e MARIADB_ROOT_PASSWORD=rootpw -e MARIADB_DATABASE=otq \
   -e MARIADB_USER=otq -e MARIADB_PASSWORD=apppw \
   -e CHALLENGE_NAME=openshift-python-mariadb -e CHALLENGE_FLAG=LocalTestFlag123 \
-  -v ./chart/otq-python-mariadb/files:/docker-entrypoint-initdb.d:ro,Z \
+  -v ./demo-db-deployment/initdb:/docker-entrypoint-initdb.d:ro,Z \
   registry.access.redhat.com/hi/mariadb:latest
 podman run -d --pod otq --name otq-app -e DB_HOST=127.0.0.1 -e DB_PASSWORD=apppw localhost/otq-app:dev
 
@@ -96,29 +106,54 @@ open http://localhost:8080
 podman pod rm -f otq
 ```
 
-## Deploy on OpenShift with Helm
+## Deploy on OpenShift
+
+### 1. Database (demo only)
+
+Skip this if you use an external database. Otherwise edit
+[demo-db-deployment/secret.env](demo-db-deployment/secret.env) first, then:
 
 ```shell
 oc new-project otq-demo
-helm install demo chart/otq-python-mariadb
+oc apply -k demo-db-deployment/
 ```
 
-Show URL and the expected flag:
+### 2. App with Helm
+
+Against the demo database (reuses its Secret):
+
+```shell
+helm install demo chart/otq-python-mariadb \
+  --set database.host=otq-mariadb \
+  --set database.existingSecret=otq-mariadb
+```
+
+Against an external database:
+
+```shell
+helm install demo chart/otq-python-mariadb \
+  --set database.host=mariadb.example.com \
+  --set database.password='<password>'
+```
+
+Show URL:
 
 ```shell
 echo "https://$(oc get route demo-otq-python-mariadb-app -o jsonpath='{.spec.host}')"
-oc get secret demo-otq-python-mariadb -o jsonpath='{.data.challenge-flag}' | base64 -d; echo
 ```
 
 Important values (see [values.yaml](chart/otq-python-mariadb/values.yaml)):
 
 | Value | Default | |
 |-------|---------|-|
+| `database.host` | `""` (required) | MariaDB host / Service name |
+| `database.port` | `3306` | |
+| `database.name` / `database.user` | `otq` / `otq` | |
+| `database.password` | `""` | Stored in Secret `<release>-otq-python-mariadb`; required unless `existingSecret` is set |
+| `database.existingSecret` / `existingSecretPasswordKey` | `""` / `database-password` | Use an existing Secret for the password |
+| `database.connectTimeout` | `3` | Seconds |
 | `challenge.name` | `openshift-python-mariadb` | Row the app displays |
-| `challenge.flag` | `""` (random) | Fixed flag |
 | `app.image.repository` / `tag` | `quay.io/open-tech-quest/openshift-python-mariadb-app` / `latest` | |
-| `mariadb.persistence.enabled` | `true` | `false` = emptyDir |
-| `mariadb.persistence.size` / `storageClass` | `1Gi` / default | |
 | `route.enabled` / `route.host` | `true` / generated | Edge TLS |
 
 All pods run under the default `restricted-v2` SCC (random UID, no privilege escalation, all capabilities dropped).
@@ -129,6 +164,7 @@ All pods run under the default `restricted-v2` SCC (random UID, no privilege esc
 |----------|---------|
 | `DB_HOST` / `DB_PORT` | `localhost` / `3306` |
 | `DB_NAME` / `DB_USER` / `DB_PASSWORD` | `otq` / `otq` / `""` |
+| `DB_CONNECT_TIMEOUT` | `3` |
 | `CHALLENGE_NAME` | `openshift-python-mariadb` |
 | `PORT` | `8080` |
 | `GUNICORN_WORKERS` / `GUNICORN_THREADS` | `2` / `4` |

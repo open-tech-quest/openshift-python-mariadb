@@ -1,0 +1,6 @@
+apiVersion: v2
+name: otq-python-mariadb
+description: Open Tech Quest - Python demo app reading its challenge flag from MariaDB on OpenShift
+type: application
+version: 0.1.0
+appVersion: "latest"

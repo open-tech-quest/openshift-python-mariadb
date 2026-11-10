@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta name="description" content="">
+    <meta name="author" content="">
+    <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}">
+
+    <title>Red Hat Summit Connect - Open Tech Quest - OpenShift</title>
+
+    <!-- Bootstrap core CSS -->
+    <link href="{{ url_for('static', filename='bootstrap.min.css') }}" rel="stylesheet">
+
+    <!-- Custom styles for this template -->
+    <link href="{{ url_for('static', filename='otq.css') }}" rel="stylesheet">
+  </head>
+
+  <body>
+
+    <header>
+      <div class="navbar navbar-dark bg-dark box-shadow">
+        <div class="container d-flex justify-content-between">
+          <a href="#" class="navbar-brand d-flex align-items-center">
+            <strong>Red Hat Summit Connect - Open Tech Quest - OpenShift</strong>
+          </a>
+        </div>
+      </div>
+    </header>
+
+    <main role="main">
+
+      <section class="jumbotron">
+        <div class="container">
+          <img src="{{ url_for('static', filename='open_tech_quest_banner.png') }}" />
+
+        </div>
+      </section>
+
+      <section class="jumbotron">
+        <div class="container">
+          <h3>Challenge flag:</h3>
+          {% if flag %}
+          <code>{{ flag }}</code>
+          {% else %}
+          <div class="alert alert-danger" role="alert">{{ error }}</div>
+          {% endif %}
+          </div>
+      </section>
+
+    </main>
+  </body>
+</html>

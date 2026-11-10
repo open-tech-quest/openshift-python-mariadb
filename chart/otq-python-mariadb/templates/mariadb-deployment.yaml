@@ -1,0 +1,94 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "otq.db.name" . }}
+  labels:
+    {{- include "otq.labels" . | nindent 4 }}
+    {{- include "otq.db.selectorLabels" . | nindent 4 }}
+    app.openshift.io/runtime: mariadb
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "otq.db.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "otq.db.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/initdb: {{ include (print $.Template.BasePath "/mariadb-initdb-configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mariadb
+          image: "{{ .Values.mariadb.image.repository }}:{{ .Values.mariadb.image.tag }}"
+          imagePullPolicy: {{ .Values.mariadb.image.pullPolicy }}
+          securityContext:
+            {{- include "otq.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - name: mysql
+              containerPort: 3306
+          env:
+            - name: MARIADB_DATABASE
+              value: {{ .Values.mariadb.database | quote }}
+            - name: MARIADB_USER
+              value: {{ .Values.mariadb.user | quote }}
+            - name: MARIADB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otq.secret.name" . }}
+                  key: database-password
+            - name: MARIADB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otq.secret.name" . }}
+                  key: database-root-password
+            - name: CHALLENGE_NAME
+              value: {{ .Values.challenge.name | quote }}
+            - name: CHALLENGE_FLAG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "otq.secret.name" . }}
+                  key: challenge-flag
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - MYSQL_PWD="$MARIADB_PASSWORD" mariadb -h 127.0.0.1 -u "$MARIADB_USER" -D "$MARIADB_DATABASE" -e 'SELECT 1 FROM challenge LIMIT 1'
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - MYSQL_PWD="$MARIADB_ROOT_PASSWORD" mariadb-admin -h 127.0.0.1 -u root ping
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.mariadb.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/mysql
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: data
+          {{- if .Values.mariadb.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ include "otq.db.name" . }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: initdb
+          configMap:
+            name: {{ include "otq.db.name" . }}-initdb
